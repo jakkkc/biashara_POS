@@ -5,9 +5,11 @@ import { db } from '../lib/firebase';
 import { Product } from '../types';
 import { cn, formatCurrency } from '../lib/utils';
 import { Plus, Search, Package, Trash2, Edit2, AlertCircle, X } from 'lucide-react';
+import { useAuditLogger } from '../lib/audit';
 
 export default function Inventory() {
-  const { business } = useAuth();
+  const { business, profile } = useAuth();
+  const { log } = useAuditLogger();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -37,13 +39,22 @@ export default function Inventory() {
     e.preventDefault();
     if (!business) return;
     try {
-      await addDoc(collection(db, `businesses/${business.id}/products`), {
+      const docRef = await addDoc(collection(db, `businesses/${business.id}/products`), {
         ...newProduct,
         businessId: business.id,
         currentStock: { main: 0 },
         vatApplicable: true,
         createdAt: new Date().toISOString()
       });
+
+      if (profile) {
+        await log('PRODUCT_CREATED', {
+          productId: docRef.id,
+          name: newProduct.name,
+          sku: newProduct.sku
+        }, profile, business);
+      }
+
       setShowAddModal(false);
       fetchProducts();
       setNewProduct({
@@ -60,9 +71,16 @@ export default function Inventory() {
     }
   };
 
-  const deleteProduct = async (id: string) => {
-    if (!business || !window.confirm('Delete this product?')) return;
+  const deleteProduct = async (id: string, name: string) => {
+    if (!business || !profile || !window.confirm(`Delete product "${name}"?`)) return;
+    
     await deleteDoc(doc(db, `businesses/${business.id}/products`, id));
+    
+    await log('PRODUCT_DELETED', {
+      productId: id,
+      name
+    }, profile, business);
+
     fetchProducts();
   };
 
@@ -142,7 +160,7 @@ export default function Inventory() {
                         <Edit2 size={16} />
                       </button>
                       <button 
-                        onClick={() => deleteProduct(product.id)}
+                        onClick={() => deleteProduct(product.id, product.name)}
                         className="p-2 text-slate-400 hover:text-red-600 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 transition-all"
                       >
                         <Trash2 size={16} />

@@ -16,6 +16,9 @@ import Customers from './pages/Customers';
 import Transfers from './pages/Transfers';
 import Settings from './pages/Settings';
 
+import Staff from './pages/Staff';
+import AuditLog from './pages/AuditLog';
+
 function PrivateRoute({ children, reqRole }: { children: React.ReactNode; reqRole?: string[] }) {
   const { user, profile, loading, isAdmin } = useAuth();
   const location = useLocation();
@@ -28,10 +31,19 @@ function PrivateRoute({ children, reqRole }: { children: React.ReactNode; reqRol
   );
   if (!user) return <Navigate to="/login" />;
   
-  if (isAdmin) return <>{children}</>; 
+  if (isAdmin) {
+    if (location.pathname === '/') return <Navigate to="/global-ops" />;
+    return <>{children}</>; 
+  }
  
   if (!profile?.businessId && location.pathname !== '/register-business') {
     return <Navigate to="/register-business" />;
+  }
+
+  // Handle Role-Based Landing Pages
+  if (location.pathname === '/') {
+    if (profile?.role === 'sales_person') return <Navigate to="/pos" />;
+    return <Dashboard />;
   }
   
   if (reqRole && !reqRole.includes(profile?.role || '')) {
@@ -77,8 +89,20 @@ function AppContent() {
           } />
           
           <Route path="pos" element={
-            <PrivateRoute reqRole={['owner', 'manager', 'cashier']}>
+            <PrivateRoute reqRole={['owner', 'manager', 'sales_person']}>
               <POS />
+            </PrivateRoute>
+          } />
+
+          <Route path="staff" element={
+            <PrivateRoute reqRole={['owner']}>
+              <Staff />
+            </PrivateRoute>
+          } />
+
+          <Route path="audit-log" element={
+            <PrivateRoute reqRole={['owner', 'manager']}>
+              <AuditLog />
             </PrivateRoute>
           } />
 
@@ -89,7 +113,7 @@ function AppContent() {
           } />
 
           <Route path="transactions" element={
-            <PrivateRoute reqRole={['owner', 'manager', 'cashier', 'accountant']}>
+            <PrivateRoute reqRole={['owner', 'manager', 'sales_person', 'accountant']}>
               <Transactions />
             </PrivateRoute>
           } />
@@ -101,7 +125,7 @@ function AppContent() {
           } />
 
           <Route path="customers" element={
-            <PrivateRoute reqRole={['owner', 'manager', 'cashier']}>
+            <PrivateRoute reqRole={['owner', 'manager', 'sales_person']}>
               <Customers />
             </PrivateRoute>
           } />

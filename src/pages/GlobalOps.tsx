@@ -2,15 +2,20 @@ import React, { useEffect, useState } from 'react';
 import { collection, onSnapshot, query, updateDoc, doc, addDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Business } from '../types';
-import { Shield, Plus, CheckCircle, AlertOctagon, TrendingUp, Search, X, Building2 } from 'lucide-react';
+import { Shield, Plus, CheckCircle, AlertOctagon, TrendingUp, Search, X, Building2, History, Users, Activity } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { BUSINESS_CATEGORIES, COUNTIES } from '../constants';
+import { NavLink } from 'react-router-dom';
 
 export default function GlobalOps() {
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [stats, setStats] = useState({
+    totalTransactions: 0,
+    newBusinessesThisWeek: 0
+  });
   const [newBiz, setNewBiz] = useState({
     name: '',
     category: '',
@@ -79,6 +84,13 @@ export default function GlobalOps() {
             <h1 className="text-3xl font-bold italic">Nex-Ink Operations Centre</h1>
           </div>
           <div className="flex items-center gap-4">
+             <NavLink
+               to="/audit-log"
+               className="bg-zinc-800 text-zinc-300 px-6 py-2.5 rounded-lg font-bold uppercase tracking-widest text-xs flex items-center gap-2 hover:bg-zinc-700 transition-all border border-zinc-700"
+             >
+               <History size={18} />
+               Global Audit Log
+             </NavLink>
              <button
                onClick={() => setShowAddModal(true)}
                className="bg-indigo-600 text-white px-6 py-2.5 rounded-lg font-bold uppercase tracking-widest text-xs flex items-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20"
@@ -110,6 +122,13 @@ export default function GlobalOps() {
          <div className="bg-white p-6 rounded-2xl border border-zinc-200">
             <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">Suspended</p>
             <h3 className="text-3xl font-black text-red-600">{businesses.filter(b => b.status === 'suspended').length}</h3>
+         </div>
+         <div className="bg-white p-6 rounded-2xl border border-zinc-200">
+            <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">Weekly Growth</p>
+            <div className="flex items-center gap-2">
+              <TrendingUp size={20} className="text-emerald-500" />
+              <h3 className="text-3xl font-black text-zinc-900">+4</h3>
+            </div>
          </div>
       </div>
 

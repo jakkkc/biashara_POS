@@ -1,4 +1,4 @@
-export type UserRole = 'owner' | 'manager' | 'cashier' | 'inventory' | 'accountant';
+export type UserRole = 'owner' | 'manager' | 'sales_person' | 'inventory' | 'accountant';
 
 export interface UserProfile {
   id: string;
@@ -9,7 +9,23 @@ export interface UserProfile {
   branchId?: string;
   pin?: string;
   phone?: string;
+  status: 'active' | 'suspended';
   createdAt: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  action: string;
+  userId: string;
+  userName: string;
+  userRole: UserRole;
+  businessId: string;
+  branchId?: string;
+  branchName?: string;
+  timestamp: any; // Using serverTimestamp()
+  details: any;
+  deviceInfo?: string;
+  businessName?: string;
 }
 
 export interface Business {

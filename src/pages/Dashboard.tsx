@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useNavigate } from 'react-router-dom';
 import { collection, query, where, onSnapshot, limit, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { BarChart3, TrendingUp, Users, Wallet, CreditCard, ShoppingBag, AlertTriangle, Plus } from 'lucide-react';
 import { formatCurrency, cn } from '../lib/utils';
+import { NavLink } from 'react-router-dom';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart as ReBarChart, Bar, PieChart, Pie, Cell
@@ -11,6 +13,7 @@ import {
 
 export default function Dashboard() {
   const { business, profile, user } = useAuth();
+  const navigate = useNavigate();
   const [stats, setStats] = useState({
     todayRevenue: 0,
     transactionCount: 0,
@@ -19,11 +22,63 @@ export default function Dashboard() {
   });
 
   useEffect(() => {
-    if (!business) return;
+    if (profile?.role === 'sales_person') {
+       navigate('/pos');
+    }
+  }, [profile?.role, navigate]);
 
-    // Realtime listeners for stats would go here
-    // For now, let's setup some mock trends and structure
-  }, [business]);
+  useEffect(() => {
+    if (!business || profile?.role === 'sales_person') return;
+
+    // Base query for transactions today
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const startIso = startOfDay.toISOString();
+
+    let txQuery = query(
+      collection(db, `businesses/${business.id}/transactions`),
+      where('createdAt', '>=', startIso)
+    );
+
+    // Apply branch scoping for managers
+    if (profile?.role === 'manager' && profile.branchId) {
+      txQuery = query(txQuery, where('branchId', '==', profile.branchId));
+    }
+
+    const unsubscribe = onSnapshot(txQuery, (snap) => {
+      const docs = snap.docs.map(doc => doc.data());
+      const revenue = docs.reduce((acc, doc) => acc + (doc.total || 0), 0);
+      const outstanding = docs.reduce((acc, doc) => acc + ((doc.total || 0) - (doc.amountPaid || 0)), 0);
+      
+      setStats(prev => ({
+        ...prev,
+        todayRevenue: revenue,
+        transactionCount: docs.length,
+        outstandingCredits: outstanding
+      }));
+    });
+
+    // Low stock count (business-wide or branch-wide depending on how stock is stored)
+    // For now, let's keep it business-wide for simplicity or adjust if needed
+    const inventoryQuery = query(collection(db, `businesses/${business.id}/products`));
+    const unsubscribeInventory = onSnapshot(inventoryQuery, (snap) => {
+      const products = snap.docs.map(doc => doc.data());
+      const lowStock = products.filter((p: any) => {
+        if (profile?.role === 'manager' && profile.branchId) {
+           return (p.currentStock?.[profile.branchId] || 0) <= (p.minStock || 5);
+        }
+        // Total stock across all branches for owner
+        const totalStock = Object.values(p.currentStock || {}).reduce((acc: number, val: any) => acc + (val || 0), 0);
+        return totalStock <= (p.minStock || 5);
+      });
+      setStats(prev => ({ ...prev, lowStockCount: lowStock.length }));
+    });
+
+    return () => {
+      unsubscribe();
+      unsubscribeInventory();
+    };
+  }, [business?.id, profile?.role, profile?.branchId]);
 
   const mockRevenueData = [
     { name: 'Mon', revenue: 4000 },
@@ -63,10 +118,13 @@ export default function Dashboard() {
           <p className="text-slate-500 text-sm">Here's a snapshot of {business?.name} today.</p>
         </div>
         <div className="flex items-center gap-3">
-           <button className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all shadow-sm shadow-indigo-100">
+           <NavLink 
+             to="/pos"
+             className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all shadow-sm shadow-indigo-100"
+           >
               <Plus size={16} />
               New Sale
-           </button>
+           </NavLink>
         </div>
       </div>
 

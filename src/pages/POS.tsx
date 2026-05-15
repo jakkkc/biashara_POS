@@ -20,9 +20,11 @@ import {
 } from 'lucide-react';
 import { Product, TransactionItem, PaymentMethod } from '../types';
 import { formatCurrency, cn } from '../lib/utils';
+import { useAuditLogger } from '../lib/audit';
 
 export default function POS() {
   const { business, profile } = useAuth();
+  const { log } = useAuditLogger();
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<TransactionItem[]>([]);
   const [search, setSearch] = useState('');
@@ -82,7 +84,15 @@ export default function POS() {
     };
 
     try {
-      await addDoc(collection(db, `businesses/${business.id}/transactions`), transaction);
+      const docRef = await addDoc(collection(db, `businesses/${business.id}/transactions`), transaction);
+      
+      await log('SALE_CREATED', {
+        transactionId: docRef.id,
+        items: cart.map(item => ({ name: item.name, quantity: item.quantity })),
+        total,
+        paymentMethods: payments.map(p => p.method)
+      }, profile, business);
+
       setCart([]);
       setShowCheckout(false);
       setPayments([]);

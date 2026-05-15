@@ -14,7 +14,8 @@ import {
   Truck,
   FileText,
   Shield,
-  Building2
+  Building2,
+  History
 } from 'lucide-react';
 import { auth } from '../lib/firebase';
 import { useState } from 'react';
@@ -32,12 +33,14 @@ export default function Layout() {
 
   const navItems = [
     { name: 'Dashboard', icon: BarChart3, path: '/', roles: ['owner', 'manager'] },
-    { name: 'POS Terminal', icon: ShoppingBag, path: '/pos', roles: ['owner', 'manager', 'cashier'] },
+    { name: 'POS Terminal', icon: ShoppingBag, path: '/pos', roles: ['owner', 'manager', 'sales_person'] },
+    { name: 'Staff Management', icon: Users, path: '/staff', roles: ['owner'] },
+    { name: 'Audit Trail', icon: History, path: '/audit-log', roles: ['owner', 'manager'] },
     { name: 'Branches', icon: Building2, path: '/branches', roles: ['owner', 'manager'] },
     { name: 'Inventory', icon: Package, path: '/inventory', roles: ['owner', 'manager', 'inventory'] },
-    { name: 'Transactions', icon: FileText, path: '/transactions', roles: ['owner', 'manager', 'cashier', 'accountant'] },
+    { name: 'Transactions', icon: FileText, path: '/transactions', roles: ['owner', 'manager', 'sales_person', 'accountant'] },
     { name: 'Expenses', icon: CreditCard, path: '/expenses', roles: ['owner', 'manager', 'accountant'] },
-    { name: 'Customers', icon: Users, path: '/customers', roles: ['owner', 'manager', 'cashier'] },
+    { name: 'Customers', icon: Users, path: '/customers', roles: ['owner', 'manager', 'sales_person'] },
     { name: 'Stock Transfer', icon: Truck, path: '/transfers', roles: ['owner', 'manager', 'inventory'] },
     { name: 'Settings', icon: Settings, path: '/settings', roles: ['owner'] },
   ];
@@ -144,8 +147,19 @@ export default function Layout() {
         </div>
 
         {/* Footer Branding */}
-        <footer className="px-8 py-4 bg-white border-t border-slate-200 flex justify-between items-center text-[10px] text-slate-400 font-medium mt-auto">
-          <p>© 2024 Biashara POS • Built by Jackson Mwaniki</p>
+        <footer className="px-8 py-4 bg-white border-t border-slate-200 flex flex-col md:flex-row justify-between items-center text-[10px] text-slate-400 font-medium mt-auto gap-4">
+          <div className="flex flex-col md:flex-row items-center gap-2 md:gap-4">
+            <p>© 2024 Biashara POS • All rights reserved</p>
+            <div className="hidden md:block w-px h-3 bg-slate-200"></div>
+            <a 
+              href="https://nex-chi-six.vercel.app/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-indigo-500 hover:text-indigo-700 font-bold transition-colors"
+            >
+              Built by Jackson Mwaniki · Nex-Ink
+            </a>
+          </div>
           <div className="flex gap-4">
             <span className="hover:text-slate-800 cursor-pointer">KISWAHILI</span>
             <span className="text-indigo-600 underline cursor-pointer">ENGLISH</span>

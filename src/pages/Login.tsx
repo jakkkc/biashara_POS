@@ -103,9 +103,14 @@ export default function Login() {
         </button>
 
         <div className="mt-10 text-center space-y-2">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+          <a 
+            href="https://nex-chi-six.vercel.app/" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest hover:text-indigo-700 transition-colors"
+          >
             Built by Jackson Mwaniki · Nex-Ink
-          </p>
+          </a>
           <p className="text-[9px] text-slate-300">SYSTEM VERSION 2.4.0 • CLOUD SECURE</p>
         </div>
       </div>
