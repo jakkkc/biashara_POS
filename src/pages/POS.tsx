@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { handleFirestoreError, OperationType } from '../lib/error-handler';
+// ... existing imports
 import { 
   Search, 
   ShoppingCart, 
@@ -34,14 +36,18 @@ export default function POS() {
   const [amountReceived, setAmountReceived] = useState<string>('');
 
   useEffect(() => {
-    if (!business) return;
-    const fetchProducts = async () => {
-      const snap = await getDocs(collection(db, `businesses/${business.id}/products`));
+    if (!business?.id) return;
+    
+    const q = query(collection(db, `businesses/${business.id}/products`));
+    const unsubscribe = onSnapshot(q, (snap) => {
       setProducts(snap.docs.map(doc => ({ ...doc.data() as Product, id: doc.id })));
       setLoading(false);
-    };
-    fetchProducts();
-  }, [business]);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `businesses/${business.id}/products`);
+    });
+
+    return () => unsubscribe();
+  }, [business?.id]);
 
   const addToCart = (product: Product) => {
     const existing = cart.find(item => item.productId === product.id);
@@ -63,7 +69,7 @@ export default function POS() {
   };
 
   const subtotal = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-  const vat = business?.settings.vatEnabled ? subtotal * (business.settings.vatRate / 100) : 0;
+  const vat = (business?.settings?.vatEnabled) ? subtotal * (business.settings.vatRate / 100) : 0;
   const total = subtotal + vat;
 
   const handleCheckout = async () => {
@@ -98,7 +104,7 @@ export default function POS() {
       setPayments([]);
       alert('Sale Completed!');
     } catch (e) {
-      console.error(e);
+      handleFirestoreError(e, OperationType.WRITE, `businesses/${business.id}/transactions`);
     }
   };
 

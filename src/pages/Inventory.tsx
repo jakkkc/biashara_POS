@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { collection, addDoc, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Product } from '../types';
 import { cn, formatCurrency } from '../lib/utils';
 import { Plus, Search, Package, Trash2, Edit2, AlertCircle, X } from 'lucide-react';
 import { useAuditLogger } from '../lib/audit';
+import { handleFirestoreError, OperationType } from '../lib/error-handler';
 
 export default function Inventory() {
   const { business, profile } = useAuth();
@@ -24,16 +25,19 @@ export default function Inventory() {
     categoryId: 'default'
   });
 
-  const fetchProducts = async () => {
-    if (!business) return;
-    const snap = await getDocs(collection(db, `businesses/${business.id}/products`));
-    setProducts(snap.docs.map(doc => ({ ...doc.data() as Product, id: doc.id })));
-    setLoading(false);
-  };
-
   useEffect(() => {
-    fetchProducts();
-  }, [business]);
+    if (!business?.id) return;
+
+    const q = query(collection(db, `businesses/${business.id}/products`));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      setProducts(snap.docs.map(doc => ({ ...doc.data() as Product, id: doc.id })));
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `businesses/${business.id}/products`);
+    });
+
+    return () => unsubscribe();
+  }, [business?.id]);
 
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,7 +60,6 @@ export default function Inventory() {
       }
 
       setShowAddModal(false);
-      fetchProducts();
       setNewProduct({
         name: '',
         sku: '',
@@ -67,21 +70,23 @@ export default function Inventory() {
         categoryId: 'default'
       });
     } catch (e) {
-      console.error(e);
+      handleFirestoreError(e, OperationType.WRITE, `businesses/${business.id}/products`);
     }
   };
 
   const deleteProduct = async (id: string, name: string) => {
     if (!business || !profile || !window.confirm(`Delete product "${name}"?`)) return;
     
-    await deleteDoc(doc(db, `businesses/${business.id}/products`, id));
-    
-    await log('PRODUCT_DELETED', {
-      productId: id,
-      name
-    }, profile, business);
-
-    fetchProducts();
+    try {
+      await deleteDoc(doc(db, `businesses/${business.id}/products`, id));
+      
+      await log('PRODUCT_DELETED', {
+        productId: id,
+        name
+      }, profile, business);
+    } catch (e) {
+      handleFirestoreError(e, OperationType.DELETE, `businesses/${business.id}/products/${id}`);
+    }
   };
 
   return (

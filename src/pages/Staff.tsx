@@ -5,6 +5,7 @@ import { db } from '../lib/firebase';
 import { UserProfile, UserRole } from '../types';
 import { UserPlus, Users, Shield, MapPin, Mail, Phone, MoreVertical, Ban, Trash2, CheckCircle, Search, Building2 } from 'lucide-react';
 import { useAuditLogger } from '../lib/audit';
+import { handleFirestoreError, OperationType } from '../lib/error-handler';
 
 export default function Staff() {
   const { business, profile } = useAuth();
@@ -31,12 +32,16 @@ export default function Staff() {
     const unsubscribeStaff = onSnapshot(q, (snap) => {
       setStaff(snap.docs.map(doc => ({ ...doc.data() as UserProfile, id: doc.id })));
       setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'users');
     });
 
     // Fetch branches for assignment
     const bq = query(collection(db, `businesses/${business.id}/branches`));
     const unsubscribeBranches = onSnapshot(bq, (snap) => {
       setBranches(snap.docs.map(doc => ({ ...doc.data(), id: doc.id })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `businesses/${business.id}/branches`);
     });
 
     return () => {
@@ -73,8 +78,7 @@ export default function Staff() {
       setNewStaff({ name: '', email: '', phone: '', role: 'sales_person', branchId: '' });
       alert('Staff member added successfully. (Simulation: Email sent)');
     } catch (err) {
-      console.error(err);
-      alert('Error adding staff');
+      handleFirestoreError(err, OperationType.WRITE, 'users');
     }
   };
 

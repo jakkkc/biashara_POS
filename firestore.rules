@@ -12,7 +12,9 @@ service cloud.firestore {
     }
 
     function userExists() {
-      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      // Use existsAfter for cross-doc validation during creation/atomic batches
+      return existsAfter(/databases/$(database)/documents/users/$(request.auth.uid)) || 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
     function me() {
@@ -21,75 +23,66 @@ service cloud.firestore {
 
     function isOwnerOf(businessId) {
       return isSignedIn()
-        && userExists()
-        && me().businessId == businessId
-        && me().role == 'owner';
+        && (me().businessId == businessId)
+        && (me().role == 'owner');
     }
 
     function isManagerOf(businessId, branchId) {
       return isSignedIn()
-        && userExists()
-        && me().businessId == businessId
-        && me().role == 'manager'
-        && me().branchId == branchId;
+        && (me().businessId == businessId)
+        && (me().role == 'manager')
+        && (me().branchId == branchId || branchId == 'any');
     }
 
     function isSalesOf(businessId, branchId) {
       return isSignedIn()
-        && userExists()
-        && me().businessId == businessId
-        && me().role == 'sales_person'
-        && me().branchId == branchId;
+        && (me().businessId == businessId)
+        && (me().role == 'sales_person')
+        && (me().branchId == branchId);
     }
 
     function isStaffOf(businessId) {
       return isSignedIn()
-        && userExists()
-        && me().businessId == businessId;
+        && (me().businessId == businessId);
     }
 
-    function isManagerOrOwner(businessId, branchId) {
-      return isOwnerOf(businessId)
-        || isManagerOf(businessId, branchId);
-    }
-
-    // Default deny for safety
+    // Default deny
     match /{document=**} {
       allow read, write: if false;
     }
 
     // ─── Users ───────────────────────────────────────────────
     match /users/{uid} {
+      // Allow read if user is self, superadmin, or same business staff
       allow read: if isSignedIn()
-        && (request.auth.uid == uid || isSuperAdmin());
+        && (request.auth.uid == uid || isSuperAdmin() || (isStaffOf(resource.data.businessId)));
 
+      // Allow create if user is self OR if creator is the owner of the business being assigned
       allow create: if isSignedIn()
-        && request.auth.uid == uid;
-
-      // Registration update: Allow setting businessId and owner role if user has no role yet
-      allow update: if isSignedIn()
-        && request.auth.uid == uid
         && (
-          isSuperAdmin() ||
-          (!resource.data.keys().has('role')) ||
-          (!request.resource.data.diff(resource.data).affectedKeys()
-            .hasAny(['role', 'businessId', 'branchId']))
+          request.auth.uid == uid || 
+          isOwnerOf(request.resource.data.businessId)
         );
 
-      allow update: if isSuperAdmin();
-      allow delete: if false;
+      // Staff can update self (limited), Owners can update staff in their biz
+      allow update: if isSignedIn()
+        && (
+          isSuperAdmin() ||
+          (request.auth.uid == uid && !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['role', 'businessId', 'branchId'])) ||
+          (isOwnerOf(resource.data.businessId) && request.resource.data.businessId == resource.data.businessId)
+        );
+
+      allow delete: if isSuperAdmin() || (isSignedIn() && isOwnerOf(resource.data.businessId));
     }
 
     // ─── Businesses ──────────────────────────────────────────
     match /businesses/{businessId} {
-      // PERMISSIVE READ: Allow reading if staff, admin, OR if the user is the owner by email (Registration flow)
       allow read: if isSuperAdmin()
         || isStaffOf(businessId)
         || (resource.data.ownerEmail == request.auth.token.email);
 
-      // Required for collection-level queries during registration
       allow list: if isSignedIn();
-
       allow create: if isSignedIn();
 
       allow update: if isOwnerOf(businessId)
@@ -97,7 +90,6 @@ service cloud.firestore {
             .affectedKeys().hasAny(['status']);
 
       allow update, delete: if isSuperAdmin();
-
 
       // ─── Sub-collections ───
 
@@ -134,20 +126,25 @@ service cloud.firestore {
       match /auditLog/{logId} {
         allow read: if isOwnerOf(businessId)
           || isSuperAdmin()
-          || (userExists() && isManagerOf(businessId, me().branchId));
+          || isManagerOf(businessId, me().branchId);
         allow create: if isStaffOf(businessId);
         allow update, delete: if false;
       }
 
       match /expenses/{expenseId} {
         allow read: if isStaffOf(businessId) || isSuperAdmin();
-        allow create: if isOwnerOf(businessId) || isManagerOf(businessId, request.resource.data.branchId) || isSuperAdmin();
-        allow update: if isOwnerOf(businessId) || isManagerOf(businessId, resource.data.branchId) || isSuperAdmin();
+        allow create: if isOwnerOf(businessId) 
+          || (isSignedIn() && isManagerOf(businessId, request.resource.data.branchId)) 
+          || isSuperAdmin();
+        allow update: if isOwnerOf(businessId) 
+          || (resource != null && isManagerOf(businessId, resource.data.branchId)) 
+          || isSuperAdmin();
+        allow delete: if isOwnerOf(businessId) || isSuperAdmin();
       }
 
       match /customers/{customerId} {
         allow read, write: if isOwnerOf(businessId)
-          || isManagerOf(businessId, 'any')
+          || (isSignedIn() && isManagerOf(businessId, 'any'))
           || isSuperAdmin();
       }
 
@@ -164,15 +161,14 @@ service cloud.firestore {
       match /stockMovements/{movementId} {
         allow read: if isStaffOf(businessId) || isSuperAdmin();
         allow create: if isOwnerOf(businessId)
-          || isManagerOf(businessId, request.resource.data.branchId)
+          || (isSignedIn() && isManagerOf(businessId, request.resource.data.branchId))
           || isSuperAdmin();
         allow update, delete: if false;
       }
 
       match /suppliers/{supplierId} {
         allow read: if isStaffOf(businessId) || isSuperAdmin();
-        allow write: if isOwnerOf(businessId)
-          || isSuperAdmin();
+        allow write: if isOwnerOf(businessId) || isSuperAdmin();
       }
 
       match /notifications/{notificationId} {

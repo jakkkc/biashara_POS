@@ -95,11 +95,33 @@ export default function RegisterBusiness() {
           createdAt: new Date().toISOString(),
         });
 
-        // 3. Create Default Branch
-        await setDoc(doc(collection(db, `businesses/${businessId}/branches`)), {
+        // 3. Create Default Branch (and capture its ID)
+        const branchRef = doc(collection(db, `businesses/${businessId}/branches`));
+        const branchId = branchRef.id;
+        
+        await setDoc(branchRef, {
           name: 'Main Branch',
           location: formData.town,
           phone: formData.phone,
+          createdAt: new Date().toISOString(),
+        });
+
+        // 4. Update User Profile with the branchId
+        await setDoc(doc(db, 'users', user.uid), {
+          name: formData.ownerName,
+          email: user.email,
+          businessId: businessId,
+          branchId: branchId, // Assign to the main branch
+          role: 'owner',
+          createdAt: new Date().toISOString(),
+        });
+      } else {
+        // Just update the user profile for existing biz
+        await setDoc(doc(db, 'users', user.uid), {
+          name: formData.ownerName,
+          email: user.email,
+          businessId: businessId,
+          role: 'owner',
           createdAt: new Date().toISOString(),
         });
       }
