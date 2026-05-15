@@ -20,8 +20,7 @@ export default function Branches() {
     if (!business?.id) return;
 
     const q = query(
-      collection(db, 'branches'),
-      where('businessId', '==', business.id)
+      collection(db, `businesses/${business.id}/branches`)
     );
 
     const unsubscribe = onSnapshot(q, (snap) => {
@@ -37,7 +36,7 @@ export default function Branches() {
     if (!business?.id) return;
 
     try {
-      await addDoc(collection(db, 'branches'), {
+      await addDoc(collection(db, `businesses/${business.id}/branches`), {
         ...newBranch,
         businessId: business.id,
         createdAt: new Date().toISOString(),
