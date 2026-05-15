@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Basic user account information.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "businessId": { "type": "string" },
+        "role": { "type": "string", "enum": ["owner", "manager", "cashier", "inventory", "accountant"] },
+        "branchId": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "pin": { "type": "string" }
+      },
+      "required": ["email", "name"]
+    },
+    "Business": {
+      "title": "Business Registration",
+      "description": "Owner's business details.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "county": { "type": "string" },
+        "town": { "type": "string" },
+        "phone": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "ownerEmail": { "type": "string" },
+        "settings": { "type": "object" },
+        "status": { "type": "string", "enum": ["active", "suspended"] }
+      },
+      "required": ["name", "category", "ownerEmail"]
+    },
+    "Branch": {
+      "title": "Business Branch",
+      "description": "Physical branch location.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "location": { "type": "string" },
+        "phone": { "type": "string" },
+        "managerId": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Inventory item.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "sku": { "type": "string" },
+        "barcode": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "unit": { "type": "string" },
+        "buyingPrice": { "type": "number" },
+        "sellingPrice": { "type": "number" },
+        "imageUrl": { "type": "string" },
+        "vatApplicable": { "type": "boolean" },
+        "minStock": { "type": "number" }
+      },
+      "required": ["name", "sellingPrice"]
+    },
+    "Transaction": {
+      "title": "Sale Transaction",
+      "description": "Record of a sale.",
+      "type": "object",
+      "properties": {
+        "branchId": { "type": "string" },
+        "cashierId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "items": { "type": "array" },
+        "subtotal": { "type": "number" },
+        "discount": { "type": "number" },
+        "tax": { "type": "number" },
+        "total": { "type": "number" },
+        "amountPaid": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "status": { "type": "string", "enum": ["paid", "partial", "credit"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{uid}": { "schema": "User", "description": "Global user profiles." },
+    "/businesses/{businessId}": { "schema": "Business", "description": "Business settings and status." },
+    "/businesses/{businessId}/branches/{branchId}": { "schema": "Branch", "description": "Branches under a business." },
+    "/businesses/{businessId}/products/{productId}": { "schema": "Product", "description": "Master product list for a business." },
+    "/businesses/{businessId}/transactions/{transactionId}": { "schema": "Transaction", "description": "Sales records." }
+  }
+}

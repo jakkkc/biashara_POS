@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Common Helpers
+    function isSignedIn() { return request.auth != null; }
+    function isVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
+    function isAdmin() { return isSignedIn() && request.auth.token.email == 'jacmwaniki@gmail.com'; }
+    function isValidId(id) { return id is string && id.size() <= 64; }
+    function getBusiness(businessId) { return get(/databases/$(database)/documents/businesses/$(businessId)).data; }
+
+    // Users
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && request.auth.uid == userId 
+        && (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'phone', 'pin', 'branchId']));
+    }
+
+    // Businesses
+    match /businesses/{businessId} {
+      allow get: if isSignedIn() && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.businessId == businessId || isAdmin());
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.businessId == businessId)
+        && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner')
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['ownerEmail', 'status']))
+        || isAdmin();
+    }
+
+    // Branches, Products, etc - Scoped to Business
+    match /businesses/{businessId}/{collection=**} {
+       function belongsToBusiness() {
+         return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.businessId == businessId;
+       }
+       function isOwner() {
+         return belongsToBusiness() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
+       }
+       function isManager() {
+         return belongsToBusiness() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'manager';
+       }
+
+       allow read: if belongsToBusiness() || isAdmin();
+       allow write: if isOwner() || isManager() || isAdmin();
+    }
+    
+    // Transactions - Cashiers can write
+    match /businesses/{businessId}/transactions/{transactionId} {
+      allow create: if (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.businessId == businessId) 
+        && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['owner', 'manager', 'cashier']);
+    }
+  }
+}

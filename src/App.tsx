@@ -1,0 +1,115 @@
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './hooks/useAuth';
+import Login from './pages/Login';
+import RegisterBusiness from './pages/RegisterBusiness';
+import Dashboard from './pages/Dashboard';
+import SuperAdminDashboard from './pages/SuperAdminDashboard';
+import POS from './pages/POS';
+import Layout from './components/Layout';
+import Inventory from './pages/Inventory';
+import Transactions from './pages/Transactions';
+import Expenses from './pages/Expenses';
+import Customers from './pages/Customers';
+import Transfers from './pages/Transfers';
+import Settings from './pages/Settings';
+
+function PrivateRoute({ children, reqRole }: { children: React.ReactNode; reqRole?: string[] }) {
+  const { user, profile, loading, isAdmin } = useAuth();
+
+  if (loading) return (
+    <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
+      <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-6"></div>
+      <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-400">Initializing Biashara POS</p>
+    </div>
+  );
+  if (!user) return <Navigate to="/login" />;
+  
+  if (isAdmin) return <>{children}</>; 
+
+  if (!profile?.businessId) return <Navigate to="/register-business" />;
+  
+  if (reqRole && !reqRole.includes(profile.role)) {
+    return <Navigate to="/" />;
+  }
+
+  return <>{children}</>;
+}
+
+function AppContent() {
+  const { isAdmin } = useAuth();
+
+  return (
+    <Router>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route 
+          path="/register-business" 
+          element={
+            <PrivateRoute>
+              <RegisterBusiness />
+            </PrivateRoute>
+          } 
+        />
+        
+        <Route path="/" element={<Layout />}>
+          <Route index element={
+            <PrivateRoute>
+              {isAdmin ? <SuperAdminDashboard /> : <Dashboard />}
+            </PrivateRoute>
+          } />
+          
+          <Route path="pos" element={
+            <PrivateRoute reqRole={['owner', 'manager', 'cashier']}>
+              <POS />
+            </PrivateRoute>
+          } />
+
+          <Route path="inventory" element={
+            <PrivateRoute reqRole={['owner', 'manager', 'inventory']}>
+              <Inventory />
+            </PrivateRoute>
+          } />
+
+          <Route path="transactions" element={
+            <PrivateRoute reqRole={['owner', 'manager', 'cashier', 'accountant']}>
+              <Transactions />
+            </PrivateRoute>
+          } />
+
+          <Route path="expenses" element={
+            <PrivateRoute reqRole={['owner', 'manager', 'accountant']}>
+              <Expenses />
+            </PrivateRoute>
+          } />
+
+          <Route path="customers" element={
+            <PrivateRoute reqRole={['owner', 'manager', 'cashier']}>
+              <Customers />
+            </PrivateRoute>
+          } />
+
+          <Route path="transfers" element={
+            <PrivateRoute reqRole={['owner', 'manager', 'inventory']}>
+              <Transfers />
+            </PrivateRoute>
+          } />
+
+          <Route path="settings" element={
+            <PrivateRoute reqRole={['owner']}>
+              <Settings />
+            </PrivateRoute>
+          } />
+        </Route>
+      </Routes>
+    </Router>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
+}

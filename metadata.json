@@ -1,0 +1,6 @@
+{
+  "name": "Biashara POS",
+  "description": "Production-ready, full-stack PWA POS system for Kenyan businesses with inventory, staff management, and multi-branch support.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["pwa", "offline", "multi-branch", "rbac", "reporting"]
+}
