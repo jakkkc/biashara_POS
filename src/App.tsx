@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import Login from './pages/Login';
 import RegisterBusiness from './pages/RegisterBusiness';
@@ -17,7 +18,8 @@ import Settings from './pages/Settings';
 
 function PrivateRoute({ children, reqRole }: { children: React.ReactNode; reqRole?: string[] }) {
   const { user, profile, loading, isAdmin } = useAuth();
-
+  const location = useLocation();
+ 
   if (loading) return (
     <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
       <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-6"></div>
@@ -27,13 +29,15 @@ function PrivateRoute({ children, reqRole }: { children: React.ReactNode; reqRol
   if (!user) return <Navigate to="/login" />;
   
   if (isAdmin) return <>{children}</>; 
-
-  if (!profile?.businessId) return <Navigate to="/register-business" />;
+ 
+  if (!profile?.businessId && location.pathname !== '/register-business') {
+    return <Navigate to="/register-business" />;
+  }
   
-  if (reqRole && !reqRole.includes(profile.role)) {
+  if (reqRole && !reqRole.includes(profile?.role || '')) {
     return <Navigate to="/" />;
   }
-
+ 
   return <>{children}</>;
 }
 

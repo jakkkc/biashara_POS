@@ -25,7 +25,10 @@ export default function RegisterBusiness() {
 
   useEffect(() => {
     async function checkExisting() {
-      if (!user?.email) return;
+      if (!user?.email) {
+        setCheckingExisting(false);
+        return;
+      }
       try {
         const q = query(collection(db, 'businesses'), where('ownerEmail', '==', user.email));
         const snap = await getDocs(q);
@@ -108,11 +111,13 @@ export default function RegisterBusiness() {
     }
   };
 
-  if (checkingExisting) {
+  if (checkingExisting || !user) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white">
         <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-6"></div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-400">Verifying Identity Meta-Data</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-400">
+          {!user ? 'Authorizing Operator' : 'Verifying Identity Meta-Data'}
+        </p>
       </div>
     );
   }

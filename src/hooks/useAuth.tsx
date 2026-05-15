@@ -27,36 +27,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setUser(user);
-      if (user) {
-        // Fetch profile
-        const profileRef = doc(db, 'users', user.uid);
-        const profileSnap = await getDoc(profileRef);
+    let unsubscribeProfile: (() => void) | undefined;
+    let unsubscribeBiz: (() => void) | undefined;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      try {
+        setUser(user);
         
-        if (profileSnap.exists()) {
-          const profileData = profileSnap.data() as UserProfile;
-          setProfile({ ...profileData, id: profileSnap.id });
-          
-          if (profileData.businessId) {
-            // Subscribe to business data
-            const bizRef = doc(db, 'businesses', profileData.businessId);
-            const unsubscribeBiz = onSnapshot(bizRef, (doc) => {
-              if (doc.exists()) {
-                setBusiness({ ...doc.data(), id: doc.id } as Business);
+        // Cleanup previous subscriptions
+        if (unsubscribeProfile) unsubscribeProfile();
+        if (unsubscribeBiz) unsubscribeBiz();
+        unsubscribeProfile = undefined;
+        unsubscribeBiz = undefined;
+
+        if (user) {
+          // Subscribe to profile
+          const profileRef = doc(db, 'users', user.uid);
+          unsubscribeProfile = onSnapshot(profileRef, (snap) => {
+            if (snap.exists()) {
+              const profileData = snap.data() as UserProfile;
+              setProfile({ ...profileData, id: snap.id });
+              
+              if (profileData.businessId) {
+                // Subscribe to business
+                const bizRef = doc(db, 'businesses', profileData.businessId);
+                // Note: This replaces previous business sub if businessId changed
+                if (unsubscribeBiz) unsubscribeBiz();
+                unsubscribeBiz = onSnapshot(bizRef, (bizSnap) => {
+                  if (bizSnap.exists()) {
+                    setBusiness({ ...bizSnap.data(), id: bizSnap.id } as Business);
+                  }
+                });
               }
-            });
-            return () => unsubscribeBiz();
-          }
+            } else {
+              setProfile(null);
+            }
+          });
+        } else {
+          setProfile(null);
+          setBusiness(null);
         }
-      } else {
-        setProfile(null);
-        setBusiness(null);
+      } catch (err) {
+        console.error("Auth initialization error:", err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeProfile) unsubscribeProfile();
+      if (unsubscribeBiz) unsubscribeBiz();
+    };
   }, []);
 
   const value = {

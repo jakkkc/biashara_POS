@@ -10,7 +10,7 @@ import {
 } from 'recharts';
 
 export default function Dashboard() {
-  const { business, profile } = useAuth();
+  const { business, profile, user } = useAuth();
   const [stats, setStats] = useState({
     todayRevenue: 0,
     transactionCount: 0,
@@ -59,7 +59,7 @@ export default function Dashboard() {
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Habari, {profile?.name.split(' ')[0]}!</h1>
+          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Habari, {profile?.name?.split(' ')[0] || user?.email?.split('@')[0]}!</h1>
           <p className="text-slate-500 text-sm">Here's a snapshot of {business?.name} today.</p>
         </div>
         <div className="flex items-center gap-3">
