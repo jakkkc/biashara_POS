@@ -64,9 +64,20 @@ export default function RegisterBusiness() {
       if (!existingBiz) {
         const businessRef = doc(collection(db, 'businesses'));
         businessId = businessRef.id;
+      }
 
-        // 1. Create Business
-        await setDoc(businessRef, {
+      // 1. Create/Update User Profile (MUST happen first to grant "owner" permissions)
+      await setDoc(doc(db, 'users', user.uid), {
+        name: formData.ownerName,
+        email: user.email,
+        businessId: businessId,
+        role: 'owner',
+        createdAt: new Date().toISOString(),
+      });
+
+      if (!existingBiz) {
+        // 2. Create Business Document
+        await setDoc(doc(db, 'businesses', businessId!), {
           name: formData.name,
           category: formData.category,
           county: formData.county,
@@ -84,7 +95,7 @@ export default function RegisterBusiness() {
           createdAt: new Date().toISOString(),
         });
 
-        // 3. Create Default Branch (Only for new businesses)
+        // 3. Create Default Branch
         await setDoc(doc(collection(db, `businesses/${businessId}/branches`)), {
           name: 'Main Branch',
           location: formData.town,
@@ -93,19 +104,15 @@ export default function RegisterBusiness() {
         });
       }
 
-      // 2. Update User Profile
-      await setDoc(doc(db, 'users', user.uid), {
-        name: formData.ownerName,
-        email: user.email,
-        businessId: businessId,
-        role: 'owner',
-        createdAt: new Date().toISOString(),
-      });
-
       navigate('/');
     } catch (err) {
-      console.error(err);
-      alert('Error creating business. Please try again.');
+      console.error('Registration Error:', err);
+      // More descriptive error if possible
+      if (err instanceof Error) {
+         alert(`Error: ${err.message}`);
+      } else {
+         alert('Error creating business. Please try again.');
+      }
     } finally {
       setLoading(false);
     }

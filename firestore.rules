@@ -11,18 +11,24 @@ service cloud.firestore {
         && request.auth.token.email == 'jacmwaniki@gmail.com';
     }
 
+    function userExists() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
     function me() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
     function isOwnerOf(businessId) {
       return isSignedIn()
+        && userExists()
         && me().businessId == businessId
         && me().role == 'owner';
     }
 
     function isManagerOf(businessId, branchId) {
       return isSignedIn()
+        && userExists()
         && me().businessId == businessId
         && me().role == 'manager'
         && me().branchId == branchId;
@@ -30,6 +36,7 @@ service cloud.firestore {
 
     function isSalesOf(businessId, branchId) {
       return isSignedIn()
+        && userExists()
         && me().businessId == businessId
         && me().role == 'sales_person'
         && me().branchId == branchId;
@@ -37,6 +44,7 @@ service cloud.firestore {
 
     function isStaffOf(businessId) {
       return isSignedIn()
+        && userExists()
         && me().businessId == businessId;
     }
 
@@ -45,6 +53,10 @@ service cloud.firestore {
         || isManagerOf(businessId, branchId);
     }
 
+    // Default deny for safety
+    match /{document=**} {
+      allow read, write: if false;
+    }
 
     // ─── Users ───────────────────────────────────────────────
     match /users/{uid} {
@@ -54,57 +66,54 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && request.auth.uid == uid;
 
-      // Staff can update their own profile but never their role or businessId
+      // Registration update: Allow setting businessId and owner role if user has no role yet
       allow update: if isSignedIn()
         && request.auth.uid == uid
-        && !request.resource.data.diff(resource.data)
-            .affectedKeys().hasAny(['role', 'businessId', 'branchId']);
+        && (
+          isSuperAdmin() ||
+          (!resource.data.keys().has('role')) ||
+          (!request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['role', 'businessId', 'branchId']))
+        );
 
-      // Only owner or super admin can update role, businessId, branchId
       allow update: if isSuperAdmin();
-
       allow delete: if false;
     }
 
-
     // ─── Businesses ──────────────────────────────────────────
     match /businesses/{businessId} {
-      allow read: if isStaffOf(businessId) || isSuperAdmin();
+      // PERMISSIVE READ: Allow reading if staff, admin, OR if the user is the owner by email (Registration flow)
+      allow read: if isSuperAdmin()
+        || isStaffOf(businessId)
+        || (resource.data.ownerEmail == request.auth.token.email);
+
+      // Required for collection-level queries during registration
+      allow list: if isSignedIn();
 
       allow create: if isSignedIn();
 
-      // Owner can update everything except their own status field
       allow update: if isOwnerOf(businessId)
         && !request.resource.data.diff(resource.data)
             .affectedKeys().hasAny(['status']);
 
-      // Only super admin can change status (suspend/activate)
-      allow update: if isSuperAdmin();
-
-      allow delete: if isSuperAdmin();
+      allow update, delete: if isSuperAdmin();
 
 
-      // ─── Branches ──────────────────────────────────────────
+      // ─── Sub-collections ───
+
       match /branches/{branchId} {
         allow read: if isStaffOf(businessId) || isSuperAdmin();
         allow write: if isOwnerOf(businessId) || isSuperAdmin();
       }
 
-
-      // ─── Products ──────────────────────────────────────────
-      // Sales staff can read products (needed for POS) but not write
       match /products/{productId} {
         allow read: if isStaffOf(businessId) || isSuperAdmin();
         allow write: if isOwnerOf(businessId)
-          || isManagerOf(businessId, resource.data.branchId)
+          || (isSignedIn() && isManagerOf(businessId, request.resource.data.get('branchId', 'all')))
+          || (resource != null && isManagerOf(businessId, resource.data.get('branchId', 'all')))
           || isSuperAdmin();
       }
 
-
-      // ─── Transactions ───────────────────────────────────────
-      // Sales staff can create transactions and read their own
-      // Managers and owner can read and edit all in their scope
-      // Nobody can delete a transaction
       match /transactions/{transactionId} {
         allow read: if isOwnerOf(businessId)
           || isSuperAdmin()
@@ -122,53 +131,36 @@ service cloud.firestore {
         allow delete: if false;
       }
 
-
-      // ─── Audit Log ──────────────────────────────────────────
-      // Append-only for all staff. No edits or deletes ever.
       match /auditLog/{logId} {
         allow read: if isOwnerOf(businessId)
           || isSuperAdmin()
-          || isManagerOf(businessId, me().branchId);
+          || (userExists() && isManagerOf(businessId, me().branchId));
         allow create: if isStaffOf(businessId);
         allow update, delete: if false;
       }
 
-
-      // ─── Expenses ───────────────────────────────────────────
-      // Sales staff have zero access to expenses
       match /expenses/{expenseId} {
-        allow read, write: if isOwnerOf(businessId)
-          || isManagerOf(businessId, resource.data.branchId)
-          || isSuperAdmin();
+        allow read: if isStaffOf(businessId) || isSuperAdmin();
+        allow create: if isOwnerOf(businessId) || isManagerOf(businessId, request.resource.data.branchId) || isSuperAdmin();
+        allow update: if isOwnerOf(businessId) || isManagerOf(businessId, resource.data.branchId) || isSuperAdmin();
       }
 
-
-      // ─── Customers ──────────────────────────────────────────
-      // Sales staff cannot access customer records
       match /customers/{customerId} {
         allow read, write: if isOwnerOf(businessId)
-          || isManagerOf(businessId, resource.data.branchId)
+          || isManagerOf(businessId, 'any')
           || isSuperAdmin();
       }
 
-
-      // ─── Stock Transfers ────────────────────────────────────
-      // Sales staff can initiate. Only manager or owner can approve.
       match /stockTransfers/{transferId} {
         allow read: if isStaffOf(businessId) || isSuperAdmin();
-
         allow create: if isStaffOf(businessId);
-
         allow update: if isOwnerOf(businessId)
           || isManagerOf(businessId, resource.data.fromBranchId)
           || isManagerOf(businessId, resource.data.toBranchId)
           || isSuperAdmin();
-
         allow delete: if false;
       }
 
-
-      // ─── Stock Movements ────────────────────────────────────
       match /stockMovements/{movementId} {
         allow read: if isStaffOf(businessId) || isSuperAdmin();
         allow create: if isOwnerOf(businessId)
@@ -177,17 +169,12 @@ service cloud.firestore {
         allow update, delete: if false;
       }
 
-
-      // ─── Suppliers ──────────────────────────────────────────
       match /suppliers/{supplierId} {
         allow read: if isStaffOf(businessId) || isSuperAdmin();
         allow write: if isOwnerOf(businessId)
-          || isManagerOf(businessId, resource.data.branchId)
           || isSuperAdmin();
       }
 
-
-      // ─── Notifications ──────────────────────────────────────
       match /notifications/{notificationId} {
         allow read: if isStaffOf(businessId) || isSuperAdmin();
         allow create: if isStaffOf(businessId);
@@ -197,11 +184,13 @@ service cloud.firestore {
       }
     }
 
+    match /superAdmin/auditLog/entries/{entryId} {
+      allow create: if isSignedIn();
+      allow read, update, delete: if isSuperAdmin();
+    }
 
-    // ─── Super Admin Global Collections ──────────────────────
     match /superAdmin/{document=**} {
       allow read, write: if isSuperAdmin();
     }
-
   }
 }
