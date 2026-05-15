@@ -4,7 +4,8 @@ import { AuthProvider, useAuth } from './hooks/useAuth';
 import Login from './pages/Login';
 import RegisterBusiness from './pages/RegisterBusiness';
 import Dashboard from './pages/Dashboard';
-import SuperAdminDashboard from './pages/SuperAdminDashboard';
+import GlobalOps from './pages/GlobalOps';
+import Branches from './pages/Branches';
 import POS from './pages/POS';
 import Layout from './components/Layout';
 import Inventory from './pages/Inventory';
@@ -55,7 +56,19 @@ function AppContent() {
         <Route path="/" element={<Layout />}>
           <Route index element={
             <PrivateRoute>
-              {isAdmin ? <SuperAdminDashboard /> : <Dashboard />}
+              {isAdmin ? <Navigate to="/global-ops" /> : <Dashboard />}
+            </PrivateRoute>
+          } />
+          
+          <Route path="global-ops" element={
+            <PrivateRoute>
+              <GlobalOps />
+            </PrivateRoute>
+          } />
+
+          <Route path="branches" element={
+            <PrivateRoute reqRole={['owner', 'manager']}>
+              <Branches />
             </PrivateRoute>
           } />
           

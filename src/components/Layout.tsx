@@ -12,7 +12,9 @@ import {
   X,
   CreditCard,
   Truck,
-  FileText
+  FileText,
+  Shield,
+  Building2
 } from 'lucide-react';
 import { auth } from '../lib/firebase';
 import { useState } from 'react';
@@ -31,6 +33,7 @@ export default function Layout() {
   const navItems = [
     { name: 'Dashboard', icon: BarChart3, path: '/', roles: ['owner', 'manager'] },
     { name: 'POS Terminal', icon: ShoppingBag, path: '/pos', roles: ['owner', 'manager', 'cashier'] },
+    { name: 'Branches', icon: Building2, path: '/branches', roles: ['owner', 'manager'] },
     { name: 'Inventory', icon: Package, path: '/inventory', roles: ['owner', 'manager', 'inventory'] },
     { name: 'Transactions', icon: FileText, path: '/transactions', roles: ['owner', 'manager', 'cashier', 'accountant'] },
     { name: 'Expenses', icon: CreditCard, path: '/expenses', roles: ['owner', 'manager', 'accountant'] },
@@ -40,7 +43,7 @@ export default function Layout() {
   ];
 
   const filteredNav = isAdmin 
-    ? [{ name: 'Super Admin', icon: BarChart3, path: '/', roles: [] }]
+    ? [{ name: 'Global Ops', icon: Shield, path: '/global-ops', roles: [] }]
     : navItems.filter(item => profile && item.roles.includes(profile.role));
 
   return (
