@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { collection, onSnapshot, query, addDoc, doc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, addDoc, doc, deleteDoc, updateDoc, collectionGroup, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Users, Search, Plus, Phone, MapPin, Calculator, X, CheckCircle, Trash2, Mail } from 'lucide-react';
 import { formatCurrency, cn } from '../lib/utils';
 import { useAuditLogger } from '../lib/audit';
+import { handleFirestoreError, OperationType } from '../lib/error-handler';
 
 export default function Customers() {
   const { business, profile } = useAuth();
@@ -22,24 +23,36 @@ export default function Customers() {
   });
 
   useEffect(() => {
-    if (!business?.id) return;
+    if (!business?.id || !profile) return;
 
-    const q = query(collection(db, `businesses/${business.id}/customers`));
+    let q;
+    if (profile.role === 'owner') {
+      q = query(collectionGroup(db, 'customers'), where('businessId', '==', business.id));
+    } else if (profile.branchId) {
+      q = query(collection(db, `businesses/${business.id}/branches/${profile.branchId}/customers`));
+    } else {
+      return;
+    }
+
     const unsubscribe = onSnapshot(q, (snap) => {
       setCustomers(snap.docs.map(doc => ({ ...doc.data(), id: doc.id })));
       setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'customers');
     });
 
     return () => unsubscribe();
-  }, [business?.id]);
+  }, [business?.id, profile?.role, profile?.branchId]);
 
   const handleAddCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!business || !profile) return;
+    if (!business || !profile?.branchId) return;
 
     try {
-      const docRef = await addDoc(collection(db, `businesses/${business.id}/customers`), {
+      const docRef = await addDoc(collection(db, `businesses/${business.id}/branches/${profile.branchId}/customers`), {
         ...newCustomer,
+        businessId: business.id,
+        branchId: profile.branchId,
         createdAt: new Date().toISOString(),
         loyaltyPoints: 0,
         currentDebt: 0
@@ -48,7 +61,8 @@ export default function Customers() {
       await log('CUSTOMER_CREATED', {
         customerId: docRef.id,
         name: newCustomer.name,
-        phone: newCustomer.phone
+        phone: newCustomer.phone,
+        branchId: profile.branchId
       }, profile, business);
 
       setShowAddModal(false);
@@ -59,13 +73,14 @@ export default function Customers() {
     }
   };
 
-  const deleteCustomer = async (id: string, name: string) => {
-    if (!business || !profile || !window.confirm(`Delete customer "${name}"?`)) return;
+  const deleteCustomer = async (id: string, name: string, customerBranchId?: string) => {
+    const targetBranchId = customerBranchId || profile?.branchId;
+    if (!business || !profile || !targetBranchId || !window.confirm(`Delete customer "${name}"?`)) return;
     try {
-      await deleteDoc(doc(db, `businesses/${business.id}/customers`, id));
-      await log('CUSTOMER_DELETED', { customerId: id, name }, profile, business);
+      await deleteDoc(doc(db, `businesses/${business.id}/branches/${targetBranchId}/customers`, id));
+      await log('CUSTOMER_DELETED', { customerId: id, name, branchId: targetBranchId }, profile, business);
     } catch (err) {
-      console.error(err);
+      handleFirestoreError(err, OperationType.DELETE, `branches/${targetBranchId}/customers/${id}`);
     }
   };
 
@@ -180,7 +195,7 @@ export default function Customers() {
                     </td>
                     <td className="py-4 px-6 text-right">
                       <button 
-                        onClick={() => deleteCustomer(customer.id, customer.name)}
+                        onClick={() => deleteCustomer(customer.id, customer.name, customer.branchId)}
                         className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
                       >
                         <Trash2 size={16} />

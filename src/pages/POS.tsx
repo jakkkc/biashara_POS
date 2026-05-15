@@ -36,18 +36,18 @@ export default function POS() {
   const [amountReceived, setAmountReceived] = useState<string>('');
 
   useEffect(() => {
-    if (!business?.id) return;
+    if (!business?.id || !profile?.branchId) return;
     
-    const q = query(collection(db, `businesses/${business.id}/products`));
+    const q = query(collection(db, `businesses/${business.id}/branches/${profile.branchId}/products`));
     const unsubscribe = onSnapshot(q, (snap) => {
       setProducts(snap.docs.map(doc => ({ ...doc.data() as Product, id: doc.id })));
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, `businesses/${business.id}/products`);
+      handleFirestoreError(error, OperationType.GET, `branches/${profile.branchId}/products`);
     });
 
     return () => unsubscribe();
-  }, [business?.id]);
+  }, [business?.id, profile?.branchId]);
 
   const addToCart = (product: Product) => {
     const existing = cart.find(item => item.productId === product.id);
@@ -73,13 +73,13 @@ export default function POS() {
   const total = subtotal + vat;
 
   const handleCheckout = async () => {
-    if (!business || !profile) return;
+    if (!business || !profile?.branchId) return;
     
     const transaction = {
       businessId: business.id,
-      branchId: profile.branchId || 'main',
+      branchId: profile.branchId,
       cashierId: profile.id,
-      items: cart,
+      items: cart.map(item => ({...item, businessId: business.id, branchId: profile.branchId})),
       subtotal,
       vat,
       total,
@@ -90,21 +90,22 @@ export default function POS() {
     };
 
     try {
-      const docRef = await addDoc(collection(db, `businesses/${business.id}/transactions`), transaction);
+      const docRef = await addDoc(collection(db, `businesses/${business.id}/branches/${profile.branchId}/transactions`), transaction);
       
       await log('SALE_CREATED', {
         transactionId: docRef.id,
         items: cart.map(item => ({ name: item.name, quantity: item.quantity })),
         total,
-        paymentMethods: payments.map(p => p.method)
+        paymentMethods: payments.map(p => p.method),
+        branchId: profile.branchId
       }, profile, business);
 
       setCart([]);
       setShowCheckout(false);
       setPayments([]);
       alert('Sale Completed!');
-    } catch (e) {
-      handleFirestoreError(e, OperationType.WRITE, `businesses/${business.id}/transactions`);
+    } catch (e: any) {
+      handleFirestoreError(e, OperationType.WRITE, `branches/${profile.branchId}/transactions`);
     }
   };
 

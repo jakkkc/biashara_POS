@@ -27,9 +27,15 @@ export async function logAction(params: AuditParams) {
     // Use a batch to ensure both writes succeed or fail together
     const batch = writeBatch(db);
     
-    // 1. Business-specific log
-    const bizLogRef = doc(collection(db, `businesses/${params.businessId}/auditLog`));
-    batch.set(bizLogRef, logData);
+    // 1. Branch-specific log (NEW)
+    if (params.branchId) {
+      const branchLogRef = doc(collection(db, `businesses/${params.businessId}/branches/${params.branchId}/auditLog`));
+      batch.set(branchLogRef, logData);
+    } else {
+      // Fallback to business-level if no branchId (e.g. business-level global actions)
+      const bizLogRef = doc(collection(db, `businesses/${params.businessId}/auditLog`));
+      batch.set(bizLogRef, logData);
+    }
     
     // 2. Global Ops log (Super Admin)
     const globalLogEntryRef = doc(collection(db, 'superAdmin/auditLog/entries'));

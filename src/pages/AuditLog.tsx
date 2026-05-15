@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { collection, onSnapshot, query, where, orderBy, limit, Timestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, orderBy, limit, Timestamp, collectionGroup } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { AuditLogEntry } from '../types';
 import { Search, Filter, Download, History, User, Building2, Smartphone, Clock, ArrowRight } from 'lucide-react';
@@ -26,21 +26,22 @@ export default function AuditLog() {
         limit(500)
       );
     } else {
-      // Branch-scoped for managers, business-scoped for owners
-      const path = `businesses/${business!.id}/auditLog`;
-      if (profile?.role === 'manager') {
-         q = query(
-           collection(db, path),
-           where('branchId', '==', profile.branchId),
-           orderBy('timestamp', 'desc'),
-           limit(300)
-         );
-      } else {
+      // Branch-scoped for managers, business-scoped for owners using collectionGroup
+      if (profile?.role === 'owner') {
         q = query(
-          collection(db, path),
+          collectionGroup(db, 'auditLog'),
+          where('businessId', '==', business!.id),
           orderBy('timestamp', 'desc'),
           limit(300)
         );
+      } else if (profile?.branchId) {
+        q = query(
+          collection(db, `businesses/${business!.id}/branches/${profile.branchId}/auditLog`),
+          orderBy('timestamp', 'desc'),
+          limit(300)
+        );
+      } else {
+        return;
       }
     }
 

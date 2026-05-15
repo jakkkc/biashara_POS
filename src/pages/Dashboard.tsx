@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, where, onSnapshot, limit, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, limit, orderBy, collectionGroup } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { BarChart3, TrendingUp, Users, Wallet, CreditCard, ShoppingBag, AlertTriangle, Plus } from 'lucide-react';
 import { formatCurrency, cn } from '../lib/utils';
 import { NavLink } from 'react-router-dom';
+import { handleFirestoreError, OperationType } from '../lib/error-handler';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart as ReBarChart, Bar, PieChart, Pie, Cell
@@ -35,14 +36,20 @@ export default function Dashboard() {
     startOfDay.setHours(0, 0, 0, 0);
     const startIso = startOfDay.toISOString();
 
-    let txQuery = query(
-      collection(db, `businesses/${business.id}/transactions`),
-      where('createdAt', '>=', startIso)
-    );
-
-    // Apply branch scoping for managers
-    if (profile?.role === 'manager' && profile.branchId) {
-      txQuery = query(txQuery, where('branchId', '==', profile.branchId));
+    let txQuery;
+    if (profile?.role === 'owner') {
+      txQuery = query(
+        collectionGroup(db, 'transactions'),
+        where('businessId', '==', business.id),
+        where('createdAt', '>=', startIso)
+      );
+    } else if (profile?.branchId) {
+      txQuery = query(
+        collection(db, `businesses/${business.id}/branches/${profile.branchId}/transactions`),
+        where('createdAt', '>=', startIso)
+      );
+    } else {
+      return;
     }
 
     const unsubscribe = onSnapshot(txQuery, (snap) => {
@@ -56,22 +63,31 @@ export default function Dashboard() {
         transactionCount: docs.length,
         outstandingCredits: outstanding
       }));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'summary-transactions');
     });
 
-    // Low stock count (business-wide or branch-wide depending on how stock is stored)
-    // For now, let's keep it business-wide for simplicity or adjust if needed
-    const inventoryQuery = query(collection(db, `businesses/${business.id}/products`));
+    // Low stock count
+    let inventoryQuery;
+    if (profile?.role === 'owner') {
+      inventoryQuery = query(
+        collectionGroup(db, 'products'),
+        where('businessId', '==', business.id)
+      );
+    } else if (profile?.branchId) {
+      inventoryQuery = query(
+        collection(db, `businesses/${business.id}/branches/${profile.branchId}/products`)
+      );
+    } else {
+      return;
+    }
+
     const unsubscribeInventory = onSnapshot(inventoryQuery, (snap) => {
       const products = snap.docs.map(doc => doc.data());
-      const lowStock = products.filter((p: any) => {
-        if (profile?.role === 'manager' && profile.branchId) {
-           return (p.currentStock?.[profile.branchId] || 0) <= (p.minStock || 5);
-        }
-        // Total stock across all branches for owner
-        const totalStock = Object.values(p.currentStock || {}).reduce((acc: number, val: any) => acc + (val || 0), 0);
-        return totalStock <= (p.minStock || 5);
-      });
+      const lowStock = products.filter((p: any) => (p.stock || 0) <= (p.minStock || 5));
       setStats(prev => ({ ...prev, lowStockCount: lowStock.length }));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'summary-inventory');
     });
 
     return () => {

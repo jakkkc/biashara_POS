@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { collection, addDoc, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, where, doc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Branch } from '../types';
 import { Plus, MapPin, Phone, Building2, ChevronRight, X } from 'lucide-react';
@@ -36,8 +36,10 @@ export default function Branches() {
     if (!business?.id) return;
 
     try {
-      await addDoc(collection(db, `businesses/${business.id}/branches`), {
+      const branchRef = doc(collection(db, `businesses/${business.id}/branches`));
+      await setDoc(branchRef, {
         ...newBranch,
+        id: branchRef.id,
         businessId: business.id,
         createdAt: new Date().toISOString(),
       });

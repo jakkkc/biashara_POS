@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, onSnapshot, query, updateDoc, doc, addDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, updateDoc, doc, addDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Business } from '../types';
 import { Shield, Plus, CheckCircle, AlertOctagon, TrendingUp, Search, X, Building2, History, Users, Activity } from 'lucide-react';
@@ -56,7 +56,9 @@ export default function GlobalOps() {
       });
 
       // Create Default Branch
-      await addDoc(collection(db, `businesses/${bizRef.id}/branches`), {
+      const branchRef = doc(collection(db, `businesses/${bizRef.id}/branches`));
+      await setDoc(branchRef, {
+        id: branchRef.id,
         name: 'Main Branch',
         location: newBiz.town,
         phone: newBiz.phone,

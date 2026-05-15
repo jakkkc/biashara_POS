@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { collection, onSnapshot, query, orderBy, addDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, addDoc, doc, deleteDoc, collectionGroup, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Wallet, Plus, Calendar, Tag, ChevronDown, Trash2, X, CheckCircle, Building2 } from 'lucide-react';
 import { formatCurrency, cn } from '../lib/utils';
 import { useAuditLogger } from '../lib/audit';
+import { handleFirestoreError, OperationType } from '../lib/error-handler';
 
 export default function Expenses() {
   const { business, profile } = useAuth();
@@ -23,16 +24,29 @@ export default function Expenses() {
   });
 
   useEffect(() => {
-    if (!business?.id) return;
+    if (!business?.id || !profile) return;
 
-    const q = query(
-      collection(db, `businesses/${business.id}/expenses`),
-      orderBy('date', 'desc')
-    );
+    let q;
+    if (profile.role === 'owner') {
+      q = query(
+        collectionGroup(db, 'expenses'),
+        where('businessId', '==', business.id),
+        orderBy('date', 'desc')
+      );
+    } else if (profile.branchId) {
+      q = query(
+        collection(db, `businesses/${business.id}/branches/${profile.branchId}/expenses`),
+        orderBy('date', 'desc')
+      );
+    } else {
+      return;
+    }
 
     const unsubscribe = onSnapshot(q, (snap) => {
       setExpenses(snap.docs.map(doc => ({ ...doc.data(), id: doc.id })));
       setLoading(false);
+    }, (error) => {
+        handleFirestoreError(error, OperationType.GET, 'expenses');
     });
 
     const bq = query(collection(db, `businesses/${business.id}/branches`));
@@ -50,9 +64,14 @@ export default function Expenses() {
     e.preventDefault();
     if (!business || !profile) return;
 
+    const targetBranchId = newExpense.branchId || profile.branchId;
+    if (!targetBranchId) return;
+
     try {
-      const docRef = await addDoc(collection(db, `businesses/${business.id}/expenses`), {
+      const docRef = await addDoc(collection(db, `businesses/${business.id}/branches/${targetBranchId}/expenses`), {
         ...newExpense,
+        branchId: targetBranchId,
+        businessId: business.id,
         createdAt: new Date().toISOString(),
         recordedBy: profile.id
       });
@@ -61,7 +80,8 @@ export default function Expenses() {
         expenseId: docRef.id,
         title: newExpense.title,
         amount: newExpense.amount,
-        category: newExpense.category
+        category: newExpense.category,
+        branchId: targetBranchId
       }, profile, business);
 
       setShowAddModal(false);
@@ -79,13 +99,14 @@ export default function Expenses() {
     }
   };
 
-  const deleteExpense = async (id: string, title: string) => {
-    if (!business || !profile || !window.confirm(`Delete expense "${title}"?`)) return;
+  const deleteExpense = async (id: string, title: string, expenseBranchId?: string) => {
+    const targetBranchId = expenseBranchId || profile?.branchId;
+    if (!business || !profile || !targetBranchId || !window.confirm(`Delete expense "${title}"?`)) return;
     try {
-      await deleteDoc(doc(db, `businesses/${business.id}/expenses`, id));
-      await log('EXPENSE_DELETED', { expenseId: id, title }, profile, business);
+      await deleteDoc(doc(db, `businesses/${business.id}/branches/${targetBranchId}/expenses`, id));
+      await log('EXPENSE_DELETED', { expenseId: id, title, branchId: targetBranchId }, profile, business);
     } catch (err) {
-      console.error(err);
+      handleFirestoreError(err, OperationType.DELETE, `branches/${targetBranchId}/expenses/${id}`);
     }
   };
 
@@ -189,7 +210,7 @@ export default function Expenses() {
                     </td>
                     <td className="py-4 px-6 text-right">
                       <button 
-                        onClick={() => deleteExpense(expense.id, expense.title)}
+                        onClick={() => deleteExpense(expense.id, expense.title, expense.branchId)}
                         className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
                       >
                         <Trash2 size={16} />

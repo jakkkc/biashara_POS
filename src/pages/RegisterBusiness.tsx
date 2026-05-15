@@ -84,6 +84,7 @@ export default function RegisterBusiness() {
           town: formData.town,
           phone: formData.phone,
           ownerEmail: user.email,
+          ownerUid: user.uid,
           status: 'active',
           settings: {
             currency: 'KES',
@@ -100,6 +101,8 @@ export default function RegisterBusiness() {
         const branchId = branchRef.id;
         
         await setDoc(branchRef, {
+          id: branchId,
+          businessId: businessId,
           name: 'Main Branch',
           location: formData.town,
           phone: formData.phone,
@@ -108,6 +111,7 @@ export default function RegisterBusiness() {
 
         // 4. Update User Profile with the branchId
         await setDoc(doc(db, 'users', user.uid), {
+          id: user.uid,
           name: formData.ownerName,
           email: user.email,
           businessId: businessId,
@@ -116,11 +120,19 @@ export default function RegisterBusiness() {
           createdAt: new Date().toISOString(),
         });
       } else {
-        // Just update the user profile for existing biz
+        // Claim existing business
+        const branchesSnap = await getDocs(collection(db, `businesses/${businessId}/branches`));
+        let branchId = '';
+        if (!branchesSnap.empty) {
+          branchId = branchesSnap.docs[0].id;
+        }
+
         await setDoc(doc(db, 'users', user.uid), {
+          id: user.uid,
           name: formData.ownerName,
           email: user.email,
           businessId: businessId,
+          branchId: branchId,
           role: 'owner',
           createdAt: new Date().toISOString(),
         });

@@ -1,29 +1,46 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { collection, query, orderBy, onSnapshot, limit } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, limit, collectionGroup, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Transaction } from '../types';
 import { formatCurrency, formatDate } from '../lib/utils';
 import { ArrowUpRight, ArrowDownRight, FileText, Download, Share2 } from 'lucide-react';
+import { handleFirestoreError, OperationType } from '../lib/error-handler';
 
 export default function Transactions() {
-  const { business } = useAuth();
+  const { business, profile } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!business) return;
-    const q = query(
-      collection(db, `businesses/${business.id}/transactions`), 
-      orderBy('createdAt', 'desc'),
-      limit(50)
-    );
+    if (!business?.id || !profile) return;
+
+    let q;
+    if (profile.role === 'owner') {
+      q = query(
+        collectionGroup(db, 'transactions'),
+        where('businessId', '==', business.id),
+        orderBy('createdAt', 'desc'),
+        limit(50)
+      );
+    } else if (profile.branchId) {
+      q = query(
+        collection(db, `businesses/${business.id}/branches/${profile.branchId}/transactions`), 
+        orderBy('createdAt', 'desc'),
+        limit(50)
+      );
+    } else {
+      return;
+    }
+
     const unsubscribe = onSnapshot(q, (snap) => {
       setTransactions(snap.docs.map(doc => ({ ...doc.data() as Transaction, id: doc.id })));
       setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'transactions');
     });
     return () => unsubscribe();
-  }, [business]);
+  }, [business?.id, profile?.role, profile?.branchId]);
 
   return (
     <div className="space-y-6">

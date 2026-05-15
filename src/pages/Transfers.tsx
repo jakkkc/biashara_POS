@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { collection, onSnapshot, query, addDoc, doc, updateDoc, getDocs, runTransaction } from 'firebase/firestore';
+import { collection, onSnapshot, query, addDoc, doc, updateDoc, getDocs, runTransaction, collectionGroup, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Truck, Search, Plus, Filter, ArrowRight, X, CheckCircle, Package, Building2 } from 'lucide-react';
 import { useAuditLogger } from '../lib/audit';
 import { cn } from '../lib/utils';
+import { handleFirestoreError, OperationType } from '../lib/error-handler';
 
 export default function Transfers() {
   const { business, profile } = useAuth();
@@ -24,12 +25,15 @@ export default function Transfers() {
   });
 
   useEffect(() => {
-    if (!business?.id) return;
+    if (!business?.id || !profile) return;
 
+    // Transfers can be viewed by anyone with access, but filtered or restricted as needed
     const q = query(collection(db, `businesses/${business.id}/stockTransfers`));
     const unsubscribe = onSnapshot(q, (snap) => {
       setTransfers(snap.docs.map(doc => ({ ...doc.data(), id: doc.id })));
       setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'stockTransfers');
     });
 
     const bq = query(collection(db, `businesses/${business.id}/branches`));
@@ -37,7 +41,18 @@ export default function Transfers() {
       setBranches(snap.docs.map(doc => ({ ...doc.data(), id: doc.id })));
     });
 
-    const pq = query(collection(db, `businesses/${business.id}/products`));
+    // Fetch products from ALL branches to allow cross-branch selection
+    let pq;
+    if (profile.role === 'owner') {
+      pq = query(collectionGroup(db, 'products'), where('businessId', '==', business.id));
+    } else if (profile.branchId) {
+      // Still allow seeing other products for transfers? 
+      // For now, owners handle cross-branch or manager can see all products in business
+      pq = query(collectionGroup(db, 'products'), where('businessId', '==', business.id));
+    } else {
+      return;
+    }
+
     const unsubscribeProducts = onSnapshot(pq, (snap) => {
       setProducts(snap.docs.map(doc => ({ ...doc.data(), id: doc.id })));
     });
@@ -47,7 +62,7 @@ export default function Transfers() {
       unsubscribeBranches();
       unsubscribeProducts();
     };
-  }, [business?.id]);
+  }, [business?.id, profile?.role, profile?.branchId]);
 
   const handleCreateTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,6 +75,8 @@ export default function Transfers() {
       const docRef = await addDoc(collection(db, `businesses/${business.id}/stockTransfers`), {
         ...newTransfer,
         productName: product.name,
+        productSku: product.sku, // Store SKU to match across branches
+        businessId: business.id,
         createdAt: new Date().toISOString(),
         createdBy: profile.id
       });
@@ -83,22 +100,46 @@ export default function Transfers() {
     
     try {
       await runTransaction(db, async (transaction) => {
-        const productRef = doc(db, `businesses/${business.id}/products`, transfer.productId);
-        const productSnap = await transaction.get(productRef);
-        
-        if (!productSnap.exists()) throw "Product does not exist!";
-        
-        const productData = productSnap.data();
-        const currentStock = productData.currentStock || {};
-        
+        // Find product docs in BOTH source and target branches by SKU
+        const sourceQuery = query(
+          collection(db, `businesses/${business.id}/branches/${transfer.fromBranchId}/products`),
+          where('sku', '==', transfer.productSku)
+        );
+        const targetQuery = query(
+          collection(db, `businesses/${business.id}/branches/${transfer.toBranchId}/products`),
+          where('sku', '==', transfer.productSku)
+        );
+
+        const [sourceSnap, targetSnap] = await Promise.all([
+          getDocs(sourceQuery),
+          getDocs(targetQuery)
+        ]);
+
+        if (sourceSnap.empty) throw new Error(`Product not found in source branch!`);
+        if (targetSnap.empty) throw new Error(`Product not found in target branch!`);
+
+        const sourceDoc = sourceSnap.docs[0];
+        const targetDoc = targetSnap.docs[0];
+
+        const sourceData = sourceDoc.data();
+        const targetData = targetDoc.data();
+
+        if ((sourceData.stock || 0) < transfer.quantity) {
+          throw new Error(`Insufficient stock in source branch! (${sourceData.stock} available)`);
+        }
+
         // Deduct from source
-        const fromBranchKey = transfer.fromBranchId || 'main';
-        const toBranchKey = transfer.toBranchId || 'main';
+        transaction.update(sourceDoc.ref, { 
+          stock: (sourceData.stock || 0) - transfer.quantity,
+          updatedAt: new Date().toISOString()
+        });
+
+        // Add to target
+        transaction.update(targetDoc.ref, { 
+          stock: (targetData.stock || 0) + transfer.quantity,
+          updatedAt: new Date().toISOString()
+        });
         
-        currentStock[fromBranchKey] = (currentStock[fromBranchKey] || 0) - transfer.quantity;
-        currentStock[toBranchKey] = (currentStock[toBranchKey] || 0) + transfer.quantity;
-        
-        transaction.update(productRef, { currentStock });
         transaction.update(doc(db, `businesses/${business.id}/stockTransfers`, transfer.id), { 
           status: 'completed',
           completedAt: new Date().toISOString(),

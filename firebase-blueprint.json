@@ -7,13 +7,14 @@
       "properties": {
         "email": { "type": "string" },
         "businessId": { "type": "string" },
-        "role": { "type": "string", "enum": ["owner", "manager", "cashier", "inventory", "accountant"] },
+        "role": { "type": "string", "enum": ["owner", "manager", "sales_person", "inventory", "accountant"] },
         "branchId": { "type": "string" },
         "name": { "type": "string" },
         "phone": { "type": "string" },
-        "pin": { "type": "string" }
+        "status": { "type": "string", "enum": ["active", "suspended"] },
+        "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["email", "name"]
+      "required": ["email", "name", "businessId"]
     },
     "Business": {
       "title": "Business Registration",
@@ -27,8 +28,10 @@
         "phone": { "type": "string" },
         "logoUrl": { "type": "string" },
         "ownerEmail": { "type": "string" },
+        "ownerUid": { "type": "string" },
         "settings": { "type": "object" },
-        "status": { "type": "string", "enum": ["active", "suspended"] }
+        "status": { "type": "string", "enum": ["active", "suspended"] },
+        "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "category", "ownerEmail"]
     },
@@ -40,7 +43,8 @@
         "name": { "type": "string" },
         "location": { "type": "string" },
         "phone": { "type": "string" },
-        "managerId": { "type": "string" }
+        "managerId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name"]
     },
@@ -49,6 +53,8 @@
       "description": "Inventory item.",
       "type": "object",
       "properties": {
+        "businessId": { "type": "string" },
+        "branchId": { "type": "string" },
         "name": { "type": "string" },
         "sku": { "type": "string" },
         "barcode": { "type": "string" },
@@ -58,15 +64,19 @@
         "sellingPrice": { "type": "number" },
         "imageUrl": { "type": "string" },
         "vatApplicable": { "type": "boolean" },
-        "minStock": { "type": "number" }
+        "minStock": { "type": "number" },
+        "stock": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["name", "sellingPrice"]
+      "required": ["name", "sellingPrice", "businessId", "branchId"]
     },
     "Transaction": {
       "title": "Sale Transaction",
       "description": "Record of a sale.",
       "type": "object",
       "properties": {
+        "businessId": { "type": "string" },
         "branchId": { "type": "string" },
         "cashierId": { "type": "string" },
         "customerId": { "type": "string" },
@@ -76,17 +86,23 @@
         "tax": { "type": "number" },
         "total": { "type": "number" },
         "amountPaid": { "type": "number" },
-        "paymentMethod": { "type": "string" },
+        "balanceRemaining": { "type": "number" },
         "status": { "type": "string", "enum": ["paid", "partial", "credit"] },
+        "notes": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
-      }
+      },
+      "required": ["businessId", "branchId", "cashierId", "total"]
     }
   },
   "firestore": {
     "/users/{uid}": { "schema": "User", "description": "Global user profiles." },
     "/businesses/{businessId}": { "schema": "Business", "description": "Business settings and status." },
     "/businesses/{businessId}/branches/{branchId}": { "schema": "Branch", "description": "Branches under a business." },
-    "/businesses/{businessId}/products/{productId}": { "schema": "Product", "description": "Master product list for a business." },
-    "/businesses/{businessId}/transactions/{transactionId}": { "schema": "Transaction", "description": "Sales records." }
+    "/businesses/{businessId}/branches/{branchId}/products/{productId}": { "schema": "Product", "description": "Branch-scoped product list." },
+    "/businesses/{businessId}/branches/{branchId}/transactions/{transactionId}": { "schema": "Transaction", "description": "Branch-scoped sales records." },
+    "/businesses/{businessId}/branches/{branchId}/staff/{staffId}": { "schema": "User", "description": "Branch-scoped staff references." },
+    "/businesses/{businessId}/branches/{branchId}/customers/{customerId}": { "schema": "object", "description": "Branch-scoped customers." },
+    "/businesses/{businessId}/branches/{branchId}/expenses/{expenseId}": { "schema": "object", "description": "Branch-scoped expenses." },
+    "/businesses/{businessId}/branches/{branchId}/auditLog/{logId}": { "schema": "object", "description": "Branch-scoped audit logs." }
   }
 }

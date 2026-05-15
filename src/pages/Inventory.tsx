@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { collection, addDoc, onSnapshot, query, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, deleteDoc, doc, collectionGroup, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Product } from '../types';
 import { cn, formatCurrency } from '../lib/utils';
@@ -26,27 +26,38 @@ export default function Inventory() {
   });
 
   useEffect(() => {
-    if (!business?.id) return;
+    if (!business?.id || !profile) return;
 
-    const q = query(collection(db, `businesses/${business.id}/products`));
+    let q;
+    if (profile.role === 'owner') {
+      // Owners see everything across branches
+      q = query(collectionGroup(db, 'products'), where('businessId', '==', business.id));
+    } else if (profile.branchId) {
+      // Staff see only their branch
+      q = query(collection(db, `businesses/${business.id}/branches/${profile.branchId}/products`));
+    } else {
+      return;
+    }
+
     const unsubscribe = onSnapshot(q, (snap) => {
       setProducts(snap.docs.map(doc => ({ ...doc.data() as Product, id: doc.id })));
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, `businesses/${business.id}/products`);
+      handleFirestoreError(error, OperationType.GET, 'products');
     });
 
     return () => unsubscribe();
-  }, [business?.id]);
+  }, [business?.id, profile?.role, profile?.branchId]);
 
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!business) return;
+    if (!business || !profile?.branchId) return;
     try {
-      const docRef = await addDoc(collection(db, `businesses/${business.id}/products`), {
+      const docRef = await addDoc(collection(db, `businesses/${business.id}/branches/${profile.branchId}/products`), {
         ...newProduct,
         businessId: business.id,
-        currentStock: { main: 0 },
+        branchId: profile.branchId,
+        currentStock: { [profile.branchId]: 0 },
         vatApplicable: true,
         createdAt: new Date().toISOString()
       });
@@ -55,7 +66,8 @@ export default function Inventory() {
         await log('PRODUCT_CREATED', {
           productId: docRef.id,
           name: newProduct.name,
-          sku: newProduct.sku
+          sku: newProduct.sku,
+          branchId: profile.branchId
         }, profile, business);
       }
 
@@ -69,23 +81,25 @@ export default function Inventory() {
         unit: 'pcs',
         categoryId: 'default'
       });
-    } catch (e) {
-      handleFirestoreError(e, OperationType.WRITE, `businesses/${business.id}/products`);
+    } catch (e: any) {
+      handleFirestoreError(e, OperationType.WRITE, `branches/${profile?.branchId}/products`);
     }
   };
 
-  const deleteProduct = async (id: string, name: string) => {
-    if (!business || !profile || !window.confirm(`Delete product "${name}"?`)) return;
+  const deleteProduct = async (id: string, name: string, productBranchId?: string) => {
+    const targetBranchId = productBranchId || profile?.branchId;
+    if (!business || !profile || !targetBranchId || !window.confirm(`Delete product "${name}"?`)) return;
     
     try {
-      await deleteDoc(doc(db, `businesses/${business.id}/products`, id));
+      await deleteDoc(doc(db, `businesses/${business.id}/branches/${targetBranchId}/products`, id));
       
       await log('PRODUCT_DELETED', {
         productId: id,
-        name
+        name,
+        branchId: targetBranchId
       }, profile, business);
-    } catch (e) {
-      handleFirestoreError(e, OperationType.DELETE, `businesses/${business.id}/products/${id}`);
+    } catch (e: any) {
+      handleFirestoreError(e, OperationType.DELETE, `branches/${targetBranchId}/products/${id}`);
     }
   };
 
@@ -165,7 +179,7 @@ export default function Inventory() {
                         <Edit2 size={16} />
                       </button>
                       <button 
-                        onClick={() => deleteProduct(product.id, product.name)}
+                        onClick={() => deleteProduct(product.id, product.name, product.branchId)}
                         className="p-2 text-slate-400 hover:text-red-600 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 transition-all"
                       >
                         <Trash2 size={16} />

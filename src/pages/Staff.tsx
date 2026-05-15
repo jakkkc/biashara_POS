@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { collection, onSnapshot, query, where, doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, doc, updateDoc, deleteDoc, setDoc, collectionGroup } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { UserProfile, UserRole } from '../types';
 import { UserPlus, Users, Shield, MapPin, Mail, Phone, MoreVertical, Ban, Trash2, CheckCircle, Search, Building2 } from 'lucide-react';
@@ -25,15 +25,22 @@ export default function Staff() {
   });
 
   useEffect(() => {
-    if (!business?.id) return;
+    if (!business?.id || !profile) return;
 
-    // Fetch staff
-    const q = query(collection(db, 'users'), where('businessId', '==', business.id));
+    let q;
+    if (profile.role === 'owner') {
+      q = query(collectionGroup(db, 'staff'), where('businessId', '==', business.id));
+    } else if (profile.branchId) {
+      q = query(collection(db, `businesses/${business.id}/branches/${profile.branchId}/staff`));
+    } else {
+      return;
+    }
+
     const unsubscribeStaff = onSnapshot(q, (snap) => {
       setStaff(snap.docs.map(doc => ({ ...doc.data() as UserProfile, id: doc.id })));
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'users');
+      handleFirestoreError(error, OperationType.GET, 'staff');
     });
 
     // Fetch branches for assignment
@@ -55,10 +62,9 @@ export default function Staff() {
     if (!business || !profile) return;
 
     try {
-      // In a real app, this would use a cloud function to create the Firebase Auth user
-      // For this prototype, we'll simulate account creation by just adding to 'users'
-      // and assume they will log in with this email.
-      const staffRef = doc(collection(db, 'users'));
+      // In a real app, we'd use a Cloud Function. 
+      // Here we create the staff record in the branch subcollection
+      const staffRef = doc(collection(db, `businesses/${business.id}/branches/${newStaff.branchId}/staff`));
       const staffData = {
         ...newStaff,
         businessId: business.id,
@@ -68,10 +74,15 @@ export default function Staff() {
 
       await setDoc(staffRef, staffData);
       
+      // Also update/create the global user profile (simulated)
+      // Note: Real uid would be from auth creation
+      await setDoc(doc(db, 'users', staffRef.id), staffData);
+      
       await log('STAFF_CREATED', { 
         targetUserId: staffRef.id, 
         targetRole: newStaff.role, 
-        targetEmail: newStaff.email 
+        targetEmail: newStaff.email,
+        branchId: newStaff.branchId
       }, profile, business);
 
       setShowAddModal(false);
@@ -82,28 +93,32 @@ export default function Staff() {
     }
   };
 
-  const toggleStatus = async (member: UserProfile) => {
-    if (!business || !profile) return;
+  const toggleStatus = async (member: any) => {
+    if (!business || !profile || !member.branchId) return;
     const newStatus = member.status === 'active' ? 'suspended' : 'active';
     try {
+      await updateDoc(doc(db, `businesses/${business.id}/branches/${member.branchId}/staff`, member.id), { status: newStatus });
       await updateDoc(doc(db, 'users', member.id), { status: newStatus });
       await log(newStatus === 'suspended' ? 'STAFF_SUSPENDED' : 'STAFF_ACTIVATED', { 
         targetUserId: member.id, 
-        targetName: member.name 
+        targetName: member.name,
+        branchId: member.branchId
       }, profile, business);
     } catch (err) {
       console.error(err);
     }
   };
 
-  const deleteStaff = async (member: UserProfile) => {
-    if (!business || !profile) return;
+  const deleteStaff = async (member: any) => {
+    if (!business || !profile || !member.branchId) return;
     if (!window.confirm(`Are you sure you want to delete ${member.name}?`)) return;
     try {
+      await deleteDoc(doc(db, `businesses/${business.id}/branches/${member.branchId}/staff`, member.id));
       await deleteDoc(doc(db, 'users', member.id));
       await log('STAFF_DELETED', { 
         targetUserId: member.id, 
-        targetName: member.name 
+        targetName: member.name,
+        branchId: member.branchId
       }, profile, business);
     } catch (err) {
       console.error(err);
